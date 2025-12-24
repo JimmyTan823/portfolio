@@ -1,0 +1,376 @@
+:root {
+    /* --- 全局变量定义 --- */
+
+    /* 背景色 */
+    --bg: #F5F5F7;
+    /* 强调色 (苹果蓝) */
+    --accent: #0071E3;
+    /* 卡片在 Z 轴上的层级间距 */
+    --step-z: 1100px;
+    /* 全局缓动函数 */
+    --ease: cubic-bezier(0.25, 1, 0.5, 1);
+
+    /* --- 响应式尺寸计算 --- */
+    /* 卡片宽度：最大400px，或者是视口宽度的75% */
+    --card-w: min(400px, 75vw);
+    /* 卡片高度：动态计算，限制在一定范围内 */
+    --card-h: clamp(calc(var(--card-w) * 1.5), 65vh, calc(var(--card-w) * 2.5));
+    /* 展开时的边距 */
+    --gap: 60px;
+}
+
+@media (max-width: 768px) {
+    :root {
+        /* 移动端调整边距和宽度 */
+        --gap: 20px;
+        --card-w: 72vw;
+    }
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    -webkit-font-smoothing: antialiased;
+}
+
+html {
+    overflow: hidden;
+    height: 100%;
+}
+
+body {
+    background-color: var(--bg);
+    color: #1D1D1F;
+    font-family: 'Inter', -apple-system, sans-serif;
+    /* 禁止默认滚动，由自定义逻辑控制 */
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+    /* 禁用默认触摸行为 */
+    touch-action: none;
+}
+
+/* UI 元素 */
+.header {
+    position: fixed;
+    top: 40px;
+    left: 40px;
+    z-index: 5000;
+    transition: opacity 0.6s var(--ease);
+    /* 防止遮挡下方卡片的交互 */
+    pointer-events: none;
+}
+
+.header h1 {
+    font-size: 1.6rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+}
+
+.indicator {
+    position: fixed;
+    right: 30px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    z-index: 5000;
+}
+
+.dot {
+    width: 8px;
+    height: 8px;
+    background: #D2D2D7;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: 0.5s var(--ease);
+}
+
+.dot.active {
+    background: var(--accent);
+    transform: scale(1.6);
+}
+
+/* 3D 舞台 */
+.stage {
+    width: 100vw;
+    height: 100vh;
+    perspective: 1200px;
+    perspective-origin: 50% 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.world {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    transform-style: preserve-3d;
+}
+
+/* 卡片容器 */
+.card-anchor {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: var(--card-w);
+    height: var(--card-h);
+    transform: translate3d(-50%, -50%, 0);
+    transform-style: preserve-3d;
+    will-change: transform, opacity, filter;
+    transition: transform 1s var(--ease), opacity 0.8s var(--ease), filter 0.8s var(--ease), width 0.8s var(--ease), height 0.8s var(--ease);
+    pointer-events: none;
+    opacity: 0;
+}
+
+.card-flipper {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    transform-style: preserve-3d;
+    transition: transform 0.8s var(--ease);
+}
+
+.card-face {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    backface-visibility: hidden;
+    border-radius: 44px;
+    background: white;
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.02);
+    border: 1px solid rgba(0, 0, 0, 0.04);
+    overflow: hidden;
+}
+
+/* --- 沉浸式预览面修复 --- */
+.face-front {
+    padding: 0;
+    z-index: 2;
+    transition: transform 0.6s var(--ease), box-shadow 0.6s var(--ease);
+}
+
+.preview-img-box {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: calc(100% - 171px);
+    z-index: 1;
+    mask-image: linear-gradient(to bottom, black 70%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to bottom, black 70%, transparent 100%);
+}
+
+.preview-img-box img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 1.2s var(--ease);
+}
+
+/* 修复核心：消融带 (用于文字下方的模糊遮罩) */
+.melt-zone {
+    position: absolute;
+    bottom: 150px;
+    /* 文字区域的高度 */
+    left: 0;
+    width: 100%;
+    height: 80px;
+    /* 模糊过渡带的高度 */
+    z-index: 2;
+    background: linear-gradient(to bottom, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 1) 100%);
+    backdrop-filter: blur(60px);
+    -webkit-backdrop-filter: blur(40px);
+    /* 关键：使用 mask 让模糊本身产生羽化感 */
+    mask-image: linear-gradient(to bottom, transparent 0%, black 100%);
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 100%);
+    pointer-events: none;
+}
+
+/* 文字覆盖层：纯白底部 */
+.front-info-overlay {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 151px;
+    /* 略微多出1px避免缝隙 */
+    padding: 0 40px 50px 40px;
+    background: #FFFFFF;
+    z-index: 3;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    border: none;
+}
+
+/* 柔和的悬停反馈 */
+.card-anchor.is-active:not(.is-open) .face-front:hover {
+    transform: scale(1.03) translate3d(0, -5px, 40px);
+    box-shadow: 0 40px 90px rgba(0, 0, 0, 0.08);
+}
+
+.card-anchor.is-active:not(.is-open) .face-front:hover img {
+    transform: scale(1.08);
+}
+
+.face-back {
+    transform: rotateY(180deg);
+    z-index: 1;
+    background: white;
+    pointer-events: none;
+}
+
+/* 展开逻辑 */
+.card-anchor.is-active {
+    pointer-events: auto;
+    opacity: 1;
+}
+
+.card-anchor.is-open {
+    width: calc(100vw - (var(--gap) * 2));
+    height: calc(100vh - (var(--gap) * 2));
+    z-index: 9000 !important;
+    transform: translate3d(-50%, -50%, 0px) !important;
+}
+
+.card-anchor.is-open .card-face {
+    border-radius: 36px;
+    box-shadow: 0 60px 150px rgba(0, 0, 0, 0.1);
+}
+
+.card-anchor.is-open .card-flipper {
+    transform: rotateY(180deg);
+}
+
+.card-anchor.is-open .face-back {
+    pointer-events: auto;
+}
+
+/* 详情内容居中滚动 */
+.detail-view {
+    width: 100%;
+    height: 100%;
+    overflow-y: auto;
+    opacity: 0;
+    transition: opacity 0.5s ease 0.4s;
+    touch-action: pan-y !important;
+    -webkit-overflow-scrolling: touch;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: min(80px, 12%) 40px;
+}
+
+.is-open .detail-view {
+    opacity: 1;
+}
+
+.detail-content-wrapper {
+    width: 100%;
+    max-width: 800px;
+    display: flex;
+    flex-direction: column;
+}
+
+.detail-view::-webkit-scrollbar {
+    width: 0px;
+    background: transparent;
+}
+
+.close-btn-container {
+    width: 100%;
+    max-width: 800px;
+    display: flex;
+    justify-content: flex-end;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.close-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: #F5F5F7;
+    border: none;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.2s;
+}
+
+.close-btn:hover {
+    background: #E8E8ED;
+    transform: scale(1.1);
+}
+
+.close-btn svg {
+    width: 20px;
+    height: 20px;
+}
+
+body.mode-detail .header,
+body.mode-detail .indicator {
+    opacity: 0 !important;
+}
+
+body.mode-detail .card-anchor:not(.is-open) {
+    opacity: 0.1;
+    filter: blur(40px);
+    transform: translate3d(-50%, -50%, -800px) !important;
+}
+
+/* 内容样式 */
+.card-tag {
+    color: var(--accent);
+    font-weight: 600;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    letter-spacing: 1px;
+}
+
+.face-front h3 {
+    font-size: 1.6rem;
+    line-height: 1.2;
+    font-weight: 600;
+}
+
+.section-text {
+    line-height: 1.9;
+    color: #424245;
+    font-size: 1.15rem;
+    margin-bottom: 40px;
+}
+
+.section-image {
+    width: 100%;
+    height: 450px;
+    background: #f5f5f7;
+    border-radius: 36px;
+    margin-bottom: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #ccc;
+    border: 1px solid rgba(0, 0, 0, 0.03);
+}
+
+.section-title {
+    font-size: 3rem;
+    margin-bottom: 30px;
+    letter-spacing: -0.02em;
+    font-weight: 600;
+}
+
+@media (max-width: 768px) {
+    .indicator {
+        right: 4vw;
+    }
+}
