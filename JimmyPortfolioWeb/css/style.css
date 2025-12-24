@@ -188,6 +188,12 @@ body {
     mask-image: linear-gradient(to bottom, transparent 0%, black 100%);
     -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 100%);
     pointer-events: none;
+    transition: opacity 0.5s ease;
+}
+
+/* 修复移动端渲染 BUG：非激活卡片隐藏模糊层，避免 backdrop-filter 叠加导致的渲染异常 */
+.card-anchor:not(.is-active) .melt-zone {
+    opacity: 0;
 }
 
 /* 文字覆盖层：纯白底部 */

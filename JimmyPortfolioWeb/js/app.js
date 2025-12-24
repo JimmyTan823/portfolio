@@ -176,8 +176,10 @@ class PortfolioApp {
                 el.style.filter = `blur(${diff * 10}px)`;
                 el.style.transform = `translate3d(calc(-50% + ${dir * sideX}px), -50%, ${tz}px) rotateY(${dir * (isMobile ? 22 : 12)}deg) scale(0.92)`;
             } else {
+                /* 修复 BUG：之前卡片（diff < 0）移动到 850px (镜头前) 会导致在移动端卡在屏幕边缘。
+                   改为移动到 2000px (镜头后，因为 perspective 是 1200px)，彻底移出视野。 */
                 el.style.opacity = "0"; el.style.filter = `blur(25px)`;
-                el.style.transform = `translate3d(calc(-50% + ${dir * sideX * 1.5}px), -50%, 850px) scale(1.6)`;
+                el.style.transform = `translate3d(calc(-50% + ${dir * sideX * 1.5}px), -50%, 2000px) scale(0.5)`;
             }
         });
     }
