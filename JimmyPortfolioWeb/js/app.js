@@ -1,5 +1,6 @@
 /**
  * 不同详情章节类型的 HTML 生成器。
+ * 图片和视频使用 data-src 延迟加载，由 IntersectionObserver 按需触发。
  * @type {Object.<string, function(string): string>}
  */
 const DetailSections = {
@@ -8,18 +9,19 @@ const DetailSections = {
     subtitle2: (text) => `<h4 class="section-subtitle2">${text}</h4>`,
     text: (text) => `<p class="section-text">${text}</p>`,
     quote: (text) => `<blockquote class="section-quote">${text}</blockquote>`,
-    // 如果传入的是 url 或者是相对路径，则渲染真实图片；否则作为占位文本
+    // 图片使用 data-src 占位，不立即加载
     image: (srcOrLabel) => {
         const isUrl = srcOrLabel.startsWith('http') || srcOrLabel.startsWith('/') || srcOrLabel.startsWith('assets') || srcOrLabel.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i);
         if (isUrl) {
-            return `<div class="section-image" style="background:transparent; border:none; height:auto; padding:0;"><img src="${srcOrLabel}" alt="Case Study Image" style="max-width: 100%; max-height: 600px; width: auto; height: auto; border-radius: 16px; box-shadow: 0 20px 40px rgba(0,0,0,0.06); display: block; margin: 0 auto;"></div>`;
+            return `<div class="section-image lazy-media" style="background:transparent; border:none; height:auto; padding:0;"><img data-src="${srcOrLabel}" alt="Case Study Image" style="max-width: 100%; max-height: 600px; width: auto; height: auto; border-radius: 16px; box-shadow: 0 20px 40px rgba(0,0,0,0.06); display: block; margin: 0 auto; opacity: 0; transition: opacity 0.4s ease;"></div>`;
         }
         return `<div class="section-image">${srcOrLabel}</div>`;
     },
+    // 视频使用 data-src 占位，不立即加载
     video: (src) => {
-        return `<div class="section-video" style="background:transparent; border:none; height:auto; padding:0; margin-bottom: 40px; display: flex; justify-content: center;">
+        return `<div class="section-video lazy-media" style="background:transparent; border:none; height:auto; padding:0; margin-bottom: 40px; display: flex; justify-content: center;">
             <div style="position: relative; width: 100%;">
-                <video src="${src}" playsinline controls preload="metadata" 
+                <video data-src="${src}" playsinline controls preload="none" 
                     style="width: 100%; height: auto; border-radius: 16px; box-shadow: 0 20px 40px rgba(0,0,0,0.06); display: block; margin: 0 auto; background: #000;"
                     onplay="this.nextElementSibling.style.opacity=0; this.nextElementSibling.style.pointerEvents='none'; document.querySelectorAll('video').forEach(v => { if (v !== this && !v.paused) v.pause(); });"
                     onpause="this.nextElementSibling.style.opacity=1; this.nextElementSibling.style.pointerEvents='auto';"
@@ -52,6 +54,8 @@ class Project {
         this.id = id; this.title = title; this.tag = tag; this.time = time;
         this.previewImg = previewImg; this.detailData = detailData;
         this.dom = null;
+        this.detailRendered = false; // 标记详情内容是否已渲染
+        this._lazyObserver = null;   // 懒加载观察器
     }
 
     /**
@@ -61,15 +65,12 @@ class Project {
     renderCard() {
         const wrapper = document.createElement('div');
         wrapper.className = 'card-anchor';
-        const contentSections = this.detailData.filter(s => s.type !== 'title');
-        const detailHtml = contentSections.map(section => {
-            return DetailSections[section.type](section.value);
-        }).join('');
 
+        // 初始只渲染卡片正面（预览面），背面留空占位
         wrapper.innerHTML = `
             <div class="card-flipper">
                 <div class="card-face face-front">
-                    <div class="preview-img-box"><img src="${this.previewImg}" alt="${this.title}"></div>
+                    <div class="preview-img-box"><img src="${this.previewImg}" alt="${this.title}" loading="lazy"></div>
                     <!-- 修复后的层级结构 -->
                     <div class="melt-zone"></div>
                     <div class="front-info-overlay">
@@ -79,31 +80,54 @@ class Project {
                     </div>
                 </div>
                 <div class="card-face face-back">
-                    <div class="detail-view">
-                        <div class="detail-nav-bar">
-                            <h4 class="small-nav-title">${this.title}</h4>
-                            <button class="close-btn">
-                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                    <line x1="18" y1="6" x2="6" y2="18"></line>
-                                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                                </svg>
-                            </button>
-                        </div>
-                        <div class="detail-content-wrapper">
-                            <div class="detail-large-header">
-                                <span class="card-tag">${this.tag}</span>
-                                <h2 class="section-title">${this.title}</h2>
-                                <p class="project-time">${this.time}</p>
-                            </div>
-                            ${detailHtml}
-                        </div>
-                    </div>
+                    <div class="detail-view"></div>
                 </div>
             </div>
         `;
 
-        const detailView = wrapper.querySelector('.detail-view');
-        const stickyNav = wrapper.querySelector('.detail-nav-bar');
+        wrapper.onclick = () => { if (portfolioApp.index === this.id && !portfolioApp.isDetail) portfolioApp.openDetail(wrapper); };
+        this.dom = wrapper;
+        return wrapper;
+    }
+
+    /**
+     * 延迟渲染详情页内容（仅在用户首次打开该卡片时调用）。
+     */
+    renderDetail() {
+        if (this.detailRendered) return;
+        this.detailRendered = true;
+
+        const contentSections = this.detailData.filter(s => s.type !== 'title');
+        const detailHtml = contentSections.map(section => {
+            return DetailSections[section.type](section.value);
+        }).join('');
+
+        const detailView = this.dom.querySelector('.detail-view');
+        detailView.innerHTML = `
+            <div class="detail-nav-bar">
+                <h4 class="small-nav-title">${this.title}</h4>
+                <button class="close-btn">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            <div class="detail-content-wrapper">
+                <div class="detail-large-header">
+                    <span class="card-tag">${this.tag}</span>
+                    <h2 class="section-title">${this.title}</h2>
+                    <p class="project-time">${this.time}</p>
+                </div>
+                ${detailHtml}
+            </div>
+        `;
+
+        // 绑定关闭按钮
+        detailView.querySelector('.close-btn').onclick = (e) => portfolioApp.closeDetail(e);
+
+        // 绑定吸顶导航栏
+        const stickyNav = detailView.querySelector('.detail-nav-bar');
         detailView.addEventListener('scroll', () => {
             if (detailView.scrollTop > 50) {
                 stickyNav.classList.add('is-stuck');
@@ -112,10 +136,46 @@ class Project {
             }
         });
 
-        wrapper.querySelector('.close-btn').onclick = (e) => portfolioApp.closeDetail(e);
-        wrapper.onclick = () => { if (portfolioApp.index === this.id && !portfolioApp.isDetail) portfolioApp.openDetail(wrapper); };
-        this.dom = wrapper;
-        return wrapper;
+        // 启动 IntersectionObserver 懒加载详情内的图片和视频
+        this._initLazyLoading(detailView);
+    }
+
+    /**
+     * 为详情页内的图片和视频设置 IntersectionObserver 懒加载。
+     * @param {HTMLElement} scrollContainer - 滚动容器（detail-view）
+     */
+    _initLazyLoading(scrollContainer) {
+        const lazyItems = scrollContainer.querySelectorAll('.lazy-media');
+        if (!lazyItems.length) return;
+
+        this._lazyObserver = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (!entry.isIntersecting) return;
+                const container = entry.target;
+                // 处理 img 懒加载
+                const img = container.querySelector('img[data-src]');
+                if (img) {
+                    img.src = img.dataset.src;
+                    img.removeAttribute('data-src');
+                    img.onload = () => { img.style.opacity = '1'; };
+                }
+                // 处理 video 懒加载
+                const video = container.querySelector('video[data-src]');
+                if (video) {
+                    video.src = video.dataset.src;
+                    video.removeAttribute('data-src');
+                    video.preload = 'metadata';
+                }
+                // 已加载，不再监听
+                this._lazyObserver.unobserve(container);
+            });
+        }, {
+            root: scrollContainer,
+            rootMargin: '200px 0px', // 提前 200px 开始加载，提升用户体验
+            threshold: 0.01
+        });
+
+        lazyItems.forEach(item => this._lazyObserver.observe(item));
     }
 }
 
@@ -292,6 +352,10 @@ class PortfolioApp {
      * @param {HTMLElement} el - 要打开的卡片元素。
      */
     openDetail(el) {
+        // 找到对应的 Project 实例，触发延迟渲染
+        const project = this.projects.find(p => p.dom === el);
+        if (project) project.renderDetail();
+
         this.isDetail = true;
         document.body.classList.add('mode-detail');
         el.classList.add('is-open');
