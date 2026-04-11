@@ -306,6 +306,12 @@ class PortfolioApp {
         document.body.classList.remove('mode-detail');
         const openCard = document.querySelector('.card-anchor.is-open');
         if (openCard) openCard.classList.remove('is-open');
+        // 暂停所有可能在播放的视频
+        document.querySelectorAll('video').forEach(video => {
+            if (!video.paused) {
+                video.pause();
+            }
+        });
         requestAnimationFrame(() => this.updateView());
     }
 }

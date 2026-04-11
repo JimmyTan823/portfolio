@@ -9,6 +9,9 @@ window.myProjectsData.push(new ProjectData({
         
         { type: 'quote', value: "此项目为团队协作项目。我的贡献包括：与小组成员一同进行产品调研、设计发散。并且负责全部 Aduino 功能实现以及原型设计与制作。" },
         { type: 'image', value: "assets/images/voiceReminder/VoiceReminder_1.png" },
+        { type: 'video', value: "assets/videos/voiceReminder/6857.MP4" },
+
+
         { type: 'subtitle', value: "项目背景" },
         { type: 'text', value: "该项目是在“隐形残疾”主题下的创新项目。在调研中我们发现“健忘”是“隐形残疾”的一种普遍的症状，尤其是在那些有脑部损伤的隐形残疾人。" },
         { type: 'subtitle', value: "项目机会" },
